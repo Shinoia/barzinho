@@ -1600,6 +1600,7 @@
                 if (campoTel === 'mesa') { nomeEnvio = limparNome(estado.nomeMesaCache || ''); estado.nomeMesaCache = ''; }
             }
             if (campoTel === 'pessoa' && telDig) {
+                telEnvio = telDig; nomeEnvio = limparNome(partesPessoa(mesaObj.nome).nome || '');
                 var antigo = mesaObj.id, novoId = antigo + ' - ' + telDig;
                 estado.pessoasNovas = estado.pessoasNovas.map(function(x) { return x === antigo ? novoId : x; });
                 estado.mesaSelecionadaId = novoId;
