@@ -1231,7 +1231,7 @@
             var v = estado.vr; if (!v) return;
             var t = document.getElementById('vr-tel'), ni = document.getElementById('vr-ni');
             v.ni = false; if (ni) ni.checked = false;
-            v.tel = tel; if (t) { t.disabled = false; t.value = tel; }
+            v.tel = tel; if (t) { t.disabled = false; t.value = bzFoneMask(tel); }
         }
         function vrEscolherNome(nome, tel) {
             var v = estado.vr; if (!v) return;
@@ -2574,6 +2574,22 @@
             });
         }
 
+        // ---------- telefone com máscara automática: (11) 98765-4321 / (11) 3456-7890 ----------
+        function bzFoneMask(v) {
+            var d = String(v || '').replace(/\D/g, '').slice(0, 11);
+            if (!d) return '';
+            if (d.length <= 2) return '(' + d;
+            if (d.length <= 6) return '(' + d.slice(0, 2) + ') ' + d.slice(2);
+            if (d.length <= 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
+            return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+        }
+        document.addEventListener('input', function(e) {
+            var c = e.target;
+            if (!c || c.type !== 'tel' || c.id === 'input-num-comanda') return;   // o número da comanda não leva máscara
+            var f = bzFoneMask(c.value);
+            if (c.value !== f) c.value = f;
+        }, true);
+
         // ---------- som (o iPad só libera depois de um toque) ----------
         function bzLiberarSom() {
             try {
@@ -2703,7 +2719,7 @@
             var tp = tipoCampoTelefone(m);
             if (!tp) return '';
             return '<div class="bz-cliente">' + (tp === 'mesa' ? '<label>Nome do cliente (opcional)</label><input type="text" id="input-nome-mesa" maxlength="40" autocomplete="off" value="' + esc(estado.nomeMesaCache || '') + '" oninput="sugerirNomeMesa(this.value)"><div id="sug-mesa"></div>' : '') +
-                '<label>Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="16" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="Ex.: 11999998888"' + (estado.telNI ? ' disabled' : '') + '>' +
+                '<label>Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="15" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="(11) 98765-4321"' + (estado.telNI ? ' disabled' : '') + '>' +
                 '<label class="chk"><input type="checkbox" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>';
         }
         function bzHtmlComanda(m) {
