@@ -188,6 +188,7 @@
         .bz-chip.pronto { background: #3fb37f; color: #08210f; }
         .bz-chip.entregue { background: #33302d; color: #a99e93; }
         .bz-chip.caixa { background: #6b4a22; color: #ffd27a; }
+        .bz-chip.enviando { background: #2a231f; color: #b9ab9c; border: 1px dashed #6b4a22; }
         .bz-acoes-item { display: flex; flex-shrink: 0; }
         .bz-mini { padding: 7px 10px; font-size: 0.8rem; margin-left: 4px; }
         .bz-mini.ok { background: #3fb37f; color: #08210f; border-color: #3fb37f; }
@@ -359,15 +360,21 @@
                 return fetchOriginal(u, o2);
             }
             u = String(u) + (String(u).indexOf('?') >= 0 ? '&' : '?') + 'chave=' + encodeURIComponent(CHAVE) + '&usuario=' + encodeURIComponent(USUARIO) + '&dev=' + encodeURIComponent(DEV);
-            return fetchOriginal(u, o).then(function(res) {
-                return res.clone().json().then(function(j) {
-                    if (j && j.negado) {
-                        CHAVE = ''; USUARIO = ''; guardarSessao('', '');
-                        pedirChave(j.off ? 'Seu acesso está desativado (off).' : ((j.bloqueado || j.desbloqueado) ? j.error : 'Usuário ou senha incorretos.'));
-                    }
-                    return res;
-                }).catch(function() { return res; });
-            });
+            var tentativas = 0;
+            function pedir() {
+                return fetchOriginal(u, o).then(function(res) {
+                    return res.clone().json().then(function(j) {
+                        if (j && j.negado) {
+                            CHAVE = ''; USUARIO = ''; guardarSessao('', '');
+                            pedirChave(j.off ? 'Seu acesso está desativado (off).' : ((j.bloqueado || j.desbloqueado) ? j.error : 'Usuário ou senha incorretos.'));
+                        }
+                        // servidor gravando outra coisa: espera um instante e manda de novo (nada se perde)
+                        if (j && j.ocupado && tentativas++ < 40) return new Promise(function(ok) { setTimeout(ok, 1000); }).then(pedir);
+                        return res;
+                    }, function() { return res; });
+                });
+            }
+            return pedir();
         };
         function pedirChave(aviso) {
             if (document.getElementById('janela-chave')) return;
@@ -823,7 +830,9 @@
                             estado.pedidosGlobais = data.pedidos;
                             // pedidos enviados que o servidor ainda não gravou continuam na tela
                             estado.pendentes = estado.pendentes.filter(function(pd) {
-                                if (Date.now() - pd.t > 60000) return false;
+                                if (pd.ok && Date.now() - pd.ok > 90000) return false;   // confirmado há muito tempo: a planilha já mostra
+                                if (pd.pedido.linha && data.pedidos.some(function(x) { return x.linha === pd.pedido.linha && x.status !== 'fechado' && x.produto === pd.pedido.produto && String(x.mesa) === String(pd.pedido.mesa); })) return false;
+                                if (!pd.ok) return true;   // ainda não confirmado pelo servidor: continua na tela (o envio é repetido até dar certo)
                                 var n = data.pedidos.filter(function(x) { return x.status !== 'fechado' && String(x.mesa) === String(pd.pedido.mesa) && x.produto === pd.pedido.produto; }).length;
                                 return n < pd.base + 1;
                             });
@@ -1132,7 +1141,7 @@
         }
 
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = 'Barzinho-20/11b';
+        var VERSAO_SITE = 'Barzinho-24/11';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -1617,26 +1626,20 @@
             processarPedidos();
             renderizar();
 
-            var urlPedido = API_URL + '?acao=novo_pedido&mesa=' + encodeURIComponent(novo.mesa) +
+            novo.enviando = true;
+            if (BZ.lote) { BZ.lote.push({ novo: novo, tel: telEnvio, nome: nomeEnvio }); return; }   // carrinho: vai tudo junto, numa gravação só
+            var urlPedido = API_URL + '?acao=novo_pedido&uid=' + bzUid() + '&mesa=' + encodeURIComponent(novo.mesa) +
                 '&produto=' + encodeURIComponent(novo.produto) + '&qnt=' + encodeURIComponent(novo.qnt) +
                 (novo.teste ? '&teste=1' : '') + (telEnvio ? '&tel=' + encodeURIComponent(telEnvio) : '') + (nomeEnvio ? '&nome=' + encodeURIComponent(nomeEnvio) : '') +
                 (novo.obs ? '&obs=' + encodeURIComponent(novo.obs) : '');
-            fetch(urlPedido, { keepalive: true })
-                .then(function(res) { return res.json(); })
-                .then(function(r) {
-                    if (r && r.result === 'success') {
+            bzGravar(urlPedido, [novo], function(r) {
                         if (r.linha) novo.linha = r.linha;   // já dá para cancelar / mudar status sem esperar a próxima sincronização
-                        setTimeout(sincronizar, 300);
-                    } else if (r && r.error) {
-                        desfazerPedido(novo, r.error);
-                    } else {
+                    }, function(r) {
                         // Apps Script antigo (não conhece novo_pedido): envia pelo método antigo
                         fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
                             keepalive: true, body: JSON.stringify(novo) })
-                            .then(function() { setTimeout(sincronizar, 1000); });
-                    }
-                })
-                .catch(function() { setTimeout(sincronizar, 1000); });
+                            .then(function() { bzConfirmar([novo]); setTimeout(sincronizar, 300); });
+            });
         }
 
         var clickTimers = {};
@@ -2556,6 +2559,7 @@
             if (bzSetor(it) === 'caixa') return st === 'entregue' ? 'Entregue' : 'Liberar';
             return { pendente: 'Enviado', preparando: 'Em preparo', pronto: 'Pronto', entregue: 'Entregue' }[st] || st;
         }
+        function bzEnviando(it) { var p = estado.pedidosGlobais[it.idItem]; return !!(p && p.enviando); }
         function bzChip(it) {
             var st = it.statusPreparo || 'pendente';
             var cls = bzSetor(it) === 'caixa' && st !== 'entregue' ? 'caixa' : st;
@@ -2715,7 +2719,7 @@
                     '<button type="button" class="bz-mini x" title="Cancelar o item" onclick="cancelarItem(' + i.idItem + ', ' + i.qnt + ')">✕</button>';
                 return '<div class="bz-item st-' + st + '"><div class="q">' + i.qnt + 'x</div>' +
                     '<div class="p">' + esc(i.produto) + (i.teste ? ' ' + etiquetaTeste() : '') + '<small>' + bzIcone(bzSetor(i)) + (h ? ' · ' + h.substring(0, 5) : '') + (i.obs ? ' · <span class="obs">' + esc(i.obs) + '</span>' : '') + '</small></div>' +
-                    '<div class="v">' + brl(i.qnt * i.preco) + '</div>' + bzChip(i) + '<div class="bz-acoes-item">' + acoes + '</div></div>';
+                    '<div class="v">' + brl(i.qnt * i.preco) + '</div>' + (bzEnviando(i) ? '<span class="bz-chip enviando">⏳ Enviando…</span>' : bzChip(i)) + '<div class="bz-acoes-item">' + acoes + '</div></div>';
             }).join('') : '<div class="bz-vazio pequeno">Nenhum pedido ainda.<br>Toque em “+ Adicionar pedido”.</div>';
             var extra = (!m.pessoa && !m.itens.length ? '<button type="button" class="bz-sec" onclick="removerComandaVazia(' + Number(m.id) + ')">✖ Remover</button>' : '') +
                 (souTeste() ? '<button type="button" class="bz-perigo" data-id="' + esc(m.id) + '" onclick="apagarAberta(this.getAttribute(\'data-id\'))">🗑️ Apagar</button>' : '');
@@ -2824,19 +2828,86 @@
         // cada item do carrinho é lançado pelo mesmo caminho de antes (adicionarItem), com produto, quantidade e observação
         function bzEnviarPedido() {
             if (!BZ.carrinho.length) return;
-            var nb = 0, nc = 0, nx = 0;
-            while (BZ.carrinho.length) {
-                var it = BZ.carrinho[0], antes = estado.pendentes.length;
-                estado.produtoSelecionadoCache = it.nome;
-                estado.quantidadeCache = it.qnt;
-                estado.obsCache = it.obs || '';
-                adicionarItem();
-                if (estado.pendentes.length === antes) { bzDesenharProdutos(); bzDesenharCarrinho(); return; } // deu erro (ex.: estoque): o resto fica no carrinho
-                if (it.setor === 'cozinha') nc += it.qnt; else if (it.setor === 'caixa') nx += it.qnt; else nb += it.qnt;
-                BZ.carrinho.shift();
+            var nb = 0, nc = 0, nx = 0, parou = false;
+            BZ.lote = [];   // os itens são montados um a um (mesmas conferências de antes) e enviados juntos no fim
+            try {
+                while (BZ.carrinho.length) {
+                    var it = BZ.carrinho[0], antes = estado.pendentes.length;
+                    estado.produtoSelecionadoCache = it.nome;
+                    estado.quantidadeCache = it.qnt;
+                    estado.obsCache = it.obs || '';
+                    adicionarItem();
+                    if (estado.pendentes.length === antes) { parou = true; break; } // deu erro (ex.: estoque): o resto fica no carrinho
+                    if (it.setor === 'cozinha') nc += it.qnt; else if (it.setor === 'caixa') nx += it.qnt; else nb += it.qnt;
+                    BZ.carrinho.shift();
+                }
+            } finally {
+                var lote = BZ.lote; BZ.lote = null;
+                if (lote && lote.length) bzEnviarLote(lote);
             }
+            if (parou) { bzDesenharProdutos(); bzDesenharCarrinho(); return; }
             bzFecharPedido();
             avisoRapido('Pedido enviado' + (nb ? ' · ' + nb + ' p/ bar' : '') + (nc ? ' · ' + nc + ' p/ cozinha' : '') + (nx ? ' · ' + nx + ' do caixa' : ''));
+        }
+
+        // ---------- gravação segura: código único por envio, repete até a planilha confirmar ----------
+        function bzUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+        function bzConfirmar(novos) {
+            novos.forEach(function(n) {
+                n.enviando = false;
+                estado.pendentes.forEach(function(pd) { if (pd.pedido === n) pd.ok = Date.now(); });
+            });
+            renderizarSeLivre();
+        }
+        function bzDesfazerVarios(novos, msg) {
+            estado.pendentes = estado.pendentes.filter(function(pd) { return novos.indexOf(pd.pedido) < 0; });
+            estado.pedidosGlobais = estado.pedidosGlobais.filter(function(x) { return novos.indexOf(x) < 0; });
+            processarPedidos(); renderizar();
+            alert(msg + (novos.length > 1 ? '\n\nNenhum item deste pedido foi lançado.' : ''));
+            sincronizar();
+        }
+        function bzGravar(url, novos, aoOk, aoAntigo, tent) {
+            tent = tent || 0;
+            function repetir() { setTimeout(function() { bzGravar(url, novos, aoOk, aoAntigo, tent + 1); }, Math.min(8000, 1000 + tent * 1000)); }
+            fetch(url)
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    if (r && r.result === 'success') { if (aoOk) aoOk(r); bzConfirmar(novos); setTimeout(sincronizar, 150); }
+                    else if (r && r.ocupado) repetir();
+                    else if (r && r.error) bzDesfazerVarios(novos, r.error);
+                    else if (aoAntigo) aoAntigo(r);
+                    else repetir();
+                })
+                .catch(function() { marcarConexao(false); repetir(); });   // sem internet: continua na tela e tenta de novo
+        }
+        function bzUrlUm(n, tel, nome) {
+            return API_URL + '?acao=novo_pedido&uid=' + bzUid() + '&mesa=' + encodeURIComponent(n.mesa) +
+                '&produto=' + encodeURIComponent(n.produto) + '&qnt=' + encodeURIComponent(n.qnt) +
+                (n.teste ? '&teste=1' : '') + (tel ? '&tel=' + encodeURIComponent(tel) : '') + (nome ? '&nome=' + encodeURIComponent(nome) : '') +
+                (n.obs ? '&obs=' + encodeURIComponent(n.obs) : '');
+        }
+        function bzEnviarLote(lote) {
+            var grupos = {}, ordem = [];
+            lote.forEach(function(x) { var k = String(x.novo.mesa); if (!grupos[k]) { grupos[k] = []; ordem.push(k); } grupos[k].push(x); });
+            ordem.forEach(function(mesa) {
+                var g = grupos[mesa], tel = '', nome = '', teste = false;
+                g.forEach(function(x) { if (x.tel && !tel) tel = x.tel; if (x.nome && !nome) nome = x.nome; if (x.novo.teste) teste = true; });
+                var novos = g.map(function(x) { return x.novo; });
+                var itens = novos.map(function(n) { return { produto: n.produto, qnt: n.qnt, obs: n.obs || '' }; });
+                var url = API_URL + '?acao=novo_lote&uid=' + bzUid() + '&mesa=' + encodeURIComponent(mesa) + '&itens=' + encodeURIComponent(JSON.stringify(itens)) +
+                    (teste ? '&teste=1' : '') + (tel ? '&tel=' + encodeURIComponent(tel) : '') + (nome ? '&nome=' + encodeURIComponent(nome) : '');
+                bzGravar(url, novos, function(r) {
+                    (r.linhas || []).forEach(function(l, i) { if (novos[i]) novos[i].linha = l; });
+                }, function() {
+                    // Apps Script ainda sem "novo_lote": manda um item por vez, em fila (um só depois do outro)
+                    var i = 0;
+                    (function proximo() {
+                        if (i >= novos.length) return;
+                        var n = novos[i];
+                        bzGravar(bzUrlUm(n, i === 0 ? tel : '', i === 0 ? nome : ''), [n], function(r) { if (r.linha) n.linha = r.linha; i++; proximo(); }, function() { bzConfirmar([n]); i++; proximo(); });
+                    })();
+                });
+            });
         }
 
         // ---------- BAR / COZINHA: Novos | Em preparo | Prontos ----------
@@ -2939,7 +3010,7 @@
             renderizar();
             if (!CHAVE) pedirChave('');
             sincronizar();
-            setInterval(function() { if (estado.sincT && Date.now() - estado.sincT < 8000) return; sincronizar(); }, 3000);   // não empilha consultas quando o servidor está lento
+            setInterval(function() { if (estado.sincT && Date.now() - estado.sincT < 6000) return; sincronizar(); }, 2000);   // não empilha consultas quando o servidor está lento
         }
     </script>
 </body>
