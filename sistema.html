@@ -1280,7 +1280,7 @@
                 '<div style="display:flex; justify-content:space-between; align-items:center;"><h3>🛒 Venda rápida</h3><button type="button" onclick="vrFechar()" style="background:#2a231f; border:2px solid #3a312b;"' + (v.enviando ? ' disabled' : '') + '>Cancelar</button></div>' +
                 '<div style="background:#e9a23b; border:2px solid #3a312b; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">VR-' + rotuloNumero('VR') + ' &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
                 '<div style="background:#201a17; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" autocomplete="off" oninput="vrNome(this.value)" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;"><div id="vr-sug"></div>' +
-                    '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
+                    '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="17" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
                 '<div style="background:#201a17; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><div id="vr-obs-atual">' + obsAtualHtml + '</div>' +
                     '<label style="font-size:0.75rem;">Obs. do cliente (ex.: boné vermelho, camisa xadrez) — soma ao que já existe</label><input type="text" id="vr-obscli" maxlength="80" autocomplete="off" value="' + esc(v.obsCli || '') + '" placeholder="Opcional" style="width:100%; margin:0.2rem 0 0;" oninput="mostrarObsCliente(estado.vr ? estado.vr.nome : \'\', \'vr-obs-atual\')"></div>' +
                 '<div style="background:#201a17; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
@@ -1337,7 +1337,7 @@
         function vrConfirmar(imprimir) {
             var v = estado.vr; if (!v || v.enviando) return;
             vrForm();
-            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            var vnome = limparNome(v.nome), vtel = bzTelDig(v.tel);
             if (vnome.length < 2) { vrErro('Informe o nome.'); return; }
             if (vtel && vtel.length < 8) { vrErro('Telefone incompleto: digite com DDD ou deixe em branco.'); return; }
             if (!v.itens.length) { vrErro('Adicione pelo menos um produto.'); return; }
@@ -1358,7 +1358,7 @@
         function vrEnviar() {
             var v = estado.vr; if (!v || v.enviando || !v.confirmando) return;
             var imprimir = v.confirmando.imprimir;
-            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            var vnome = limparNome(v.nome), vtel = bzTelDig(v.tel);
             var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
             var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
             if (!estado.vrOcultas) estado.vrOcultas = {};
@@ -1392,7 +1392,7 @@
         function vrEnviarLento() {
             var v = estado.vr; if (!v || v.enviando || !v.confirmando) return;
             var imprimir = v.confirmando.imprimir;
-            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            var vnome = limparNome(v.nome), vtel = bzTelDig(v.tel);
             v.enviando = true; vrDesenhar();
             var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
             var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
@@ -1577,7 +1577,7 @@
             if (!mesaObj) return;
             var telEnvio = '', nomeEnvio = '', campoTel = ov ? '' : tipoCampoTelefone(mesaObj);
             if (campoTel) {
-                var telDig = String(estado.telCache || '').replace(/\D/g, '');
+                var telDig = bzTelDig(estado.telCache);
                 if (telDig && telDig.length < 8) { alert('Telefone incompleto. Digite com DDD ou deixe em branco.'); var tf = document.getElementById('input-tel-pessoa'); if (tf && tf.focus) tf.focus(); return; }
                 if (telDig && campoTel === 'mesa') { telEnvio = telDig; estado.telCache = ''; }
                 if (!telDig && estado.telNI && campoTel === 'mesa') telEnvio = 'ni';
@@ -2574,14 +2574,15 @@
             });
         }
 
-        // ---------- telefone com máscara automática: (11) 98765-4321 / (11) 3456-7890 ----------
+        // ---------- telefone com máscara automática: (011) 988.304.711 / fixo (011) 3456.7890 ----------
+        function bzTelDig(v) { return String(v || '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 11); }   // só os números, sem o 0 do DDD
         function bzFoneMask(v) {
-            var d = String(v || '').replace(/\D/g, '').slice(0, 11);
+            var d = bzTelDig(v);
             if (!d) return '';
-            if (d.length <= 2) return '(' + d;
-            if (d.length <= 6) return '(' + d.slice(0, 2) + ') ' + d.slice(2);
-            if (d.length <= 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
-            return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+            if (d.length <= 2) return '(0' + d;
+            var r = d.slice(2), ini = '(0' + d.slice(0, 2) + ') ';
+            if (r.length === 8) return ini + r.slice(0, 4) + '.' + r.slice(4);   // fixo: 8 números
+            return ini + r.match(/.{1,3}/g).join('.');                           // celular: 9 números em grupos de 3
         }
         document.addEventListener('input', function(e) {
             var c = e.target;
@@ -2719,7 +2720,7 @@
             var tp = tipoCampoTelefone(m);
             if (!tp) return '';
             return '<div class="bz-cliente">' + (tp === 'mesa' ? '<label>Nome do cliente (opcional)</label><input type="text" id="input-nome-mesa" maxlength="40" autocomplete="off" value="' + esc(estado.nomeMesaCache || '') + '" oninput="sugerirNomeMesa(this.value)"><div id="sug-mesa"></div>' : '') +
-                '<label>Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="15" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="(11) 98765-4321"' + (estado.telNI ? ' disabled' : '') + '>' +
+                '<label>Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="17" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="(011) 988.304.711"' + (estado.telNI ? ' disabled' : '') + '>' +
                 '<label class="chk"><input type="checkbox" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>';
         }
         function bzHtmlComanda(m) {
