@@ -285,6 +285,14 @@
             .bz-kds .bz-col.pronto { display: none; }
             .bz-telas { grid-template-columns: 1fr; }
         }
+
+        /* número da nova comanda */
+        .bz-num { display: flex; align-items: center; margin: 0.25rem 0 0.3rem; }
+        .bz-num input { flex: 1; margin: 0 0.5rem !important; font-size: 1.3rem !important; text-align: center; font-weight: 800; }
+        .bz-num .bz-qbtn { width: 46px; height: 46px; font-size: 1.4rem; }
+        .bz-num-aviso { font-size: 0.78rem; color: #b9ab9c; margin-bottom: 0.6rem; line-height: 1.6; }
+        .bz-num-aviso .msg { color: #ffd27a; font-weight: 700; font-size: 0.85rem; }
+        .bz-num-usado { display: inline-block; background: #3a312b; color: #8a7d70; text-decoration: line-through; border-radius: 6px; padding: 0 6px; margin: 0 3px 2px 0; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -1120,6 +1128,8 @@
         // + Nova comanda (única): número da comanda + nome (opcional). Também aceita VIP e o segredo do jogo.
         function novaComanda() { novaPessoa(); }
         function confirmarNovaComanda() {
+            clearTimeout(BZ.numT);
+            if (!bzNumAjustar()) { var cnx = document.getElementById('input-num-comanda'); if (cnx && cnx.focus) cnx.focus(); return; }   // número aberto: troca pelo livre e mostra antes de abrir
             var nomeIn = document.getElementById('input-nova-pessoa'), nome = limparNome(nomeIn ? nomeIn.value : '');
             var obsIn = document.getElementById('input-obs-cli'), obsC = limparObsCli(obsIn ? obsIn.value : '');
             estado.obsNova = '';
@@ -1186,7 +1196,10 @@
             el.innerHTML = '<div style="background:#2a231f; border:3px solid #3a312b; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#f4ede5;">' +
                 '<h3 style="margin-bottom:0.75rem;">+ Nova comanda</h3>' +
                 '<label style="font-size:0.8rem;">Número da comanda:</label>' +
-                '<input type="tel" inputmode="numeric" id="input-num-comanda" maxlength="4" autocomplete="off" oninput="this.value = this.value.replace(/\\D/g, \'\')" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
+                '<div class="bz-num"><button type="button" class="bz-qbtn" title="Número livre anterior" onclick="bzNumPasso(-1)">−</button>' +
+                '<input type="tel" inputmode="numeric" id="input-num-comanda" maxlength="4" autocomplete="off" oninput="bzNumDigitado(this)">' +
+                '<button type="button" class="bz-qbtn" title="Próximo número livre" onclick="bzNumPasso(1)">+</button></div>' +
+                '<div id="bz-num-aviso" class="bz-num-aviso"></div>' +
                 '<label style="font-size:0.8rem;">Nome (opcional; comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
                 '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') confirmarNovaComanda()">' +
                 '<div id="sugestoes-pessoa" style="margin-bottom:0.5rem; max-height:30vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
@@ -1198,6 +1211,9 @@
                     '<button type="button" onclick="confirmarNovaComanda()" style="background:#e9a23b; border:2px solid #3a312b;">Abrir</button>' +
                 '</div></div>';
             document.body.appendChild(el);
+            var cnum = document.getElementById('input-num-comanda');
+            if (cnum) cnum.value = String(bzNumLivre(1, 1) || '');
+            bzNumAviso('');
             var inp = document.getElementById('input-nova-pessoa');
             if (inp && inp.focus) inp.focus();
         }
@@ -1280,7 +1296,7 @@
                 '<div style="display:flex; justify-content:space-between; align-items:center;"><h3>🛒 Venda rápida</h3><button type="button" onclick="vrFechar()" style="background:#2a231f; border:2px solid #3a312b;"' + (v.enviando ? ' disabled' : '') + '>Cancelar</button></div>' +
                 '<div style="background:#e9a23b; border:2px solid #3a312b; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">VR-' + rotuloNumero('VR') + ' &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
                 '<div style="background:#201a17; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" autocomplete="off" oninput="vrNome(this.value)" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;"><div id="vr-sug"></div>' +
-                    '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
+                    '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="17" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
                 '<div style="background:#201a17; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><div id="vr-obs-atual">' + obsAtualHtml + '</div>' +
                     '<label style="font-size:0.75rem;">Obs. do cliente (ex.: boné vermelho, camisa xadrez) — soma ao que já existe</label><input type="text" id="vr-obscli" maxlength="80" autocomplete="off" value="' + esc(v.obsCli || '') + '" placeholder="Opcional" style="width:100%; margin:0.2rem 0 0;" oninput="mostrarObsCliente(estado.vr ? estado.vr.nome : \'\', \'vr-obs-atual\')"></div>' +
                 '<div style="background:#201a17; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
@@ -1337,7 +1353,7 @@
         function vrConfirmar(imprimir) {
             var v = estado.vr; if (!v || v.enviando) return;
             vrForm();
-            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            var vnome = limparNome(v.nome), vtel = bzTelDig(v.tel);
             if (vnome.length < 2) { vrErro('Informe o nome.'); return; }
             if (vtel && vtel.length < 8) { vrErro('Telefone incompleto: digite com DDD ou deixe em branco.'); return; }
             if (!v.itens.length) { vrErro('Adicione pelo menos um produto.'); return; }
@@ -1358,7 +1374,7 @@
         function vrEnviar() {
             var v = estado.vr; if (!v || v.enviando || !v.confirmando) return;
             var imprimir = v.confirmando.imprimir;
-            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            var vnome = limparNome(v.nome), vtel = bzTelDig(v.tel);
             var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
             var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
             if (!estado.vrOcultas) estado.vrOcultas = {};
@@ -1392,7 +1408,7 @@
         function vrEnviarLento() {
             var v = estado.vr; if (!v || v.enviando || !v.confirmando) return;
             var imprimir = v.confirmando.imprimir;
-            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            var vnome = limparNome(v.nome), vtel = bzTelDig(v.tel);
             v.enviando = true; vrDesenhar();
             var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
             var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
@@ -1577,7 +1593,7 @@
             if (!mesaObj) return;
             var telEnvio = '', nomeEnvio = '', campoTel = ov ? '' : tipoCampoTelefone(mesaObj);
             if (campoTel) {
-                var telDig = String(estado.telCache || '').replace(/\D/g, '');
+                var telDig = bzTelDig(estado.telCache);
                 if (telDig && telDig.length < 8) { alert('Telefone incompleto. Digite com DDD ou deixe em branco.'); var tf = document.getElementById('input-tel-pessoa'); if (tf && tf.focus) tf.focus(); return; }
                 if (telDig && campoTel === 'mesa') { telEnvio = telDig; estado.telCache = ''; }
                 if (!telDig && estado.telNI && campoTel === 'mesa') telEnvio = 'ni';
@@ -2574,14 +2590,15 @@
             });
         }
 
-        // ---------- telefone com máscara automática: (11) 98765-4321 / (11) 3456-7890 ----------
+        // ---------- telefone com máscara automática: (011) 988.304.711 / fixo (011) 3456.7890 ----------
+        function bzTelDig(v) { return String(v || '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 11); }   // só os números, sem o 0 do DDD
         function bzFoneMask(v) {
-            var d = String(v || '').replace(/\D/g, '').slice(0, 11);
+            var d = bzTelDig(v);
             if (!d) return '';
-            if (d.length <= 2) return '(' + d;
-            if (d.length <= 6) return '(' + d.slice(0, 2) + ') ' + d.slice(2);
-            if (d.length <= 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
-            return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+            if (d.length <= 2) return '(0' + d;
+            var r = d.slice(2), ini = '(0' + d.slice(0, 2) + ') ';
+            if (r.length === 8) return ini + r.slice(0, 4) + '.' + r.slice(4);   // fixo: 8 números
+            return ini + r.match(/.{1,3}/g).join('.');                           // celular: 9 números em grupos de 3
         }
         document.addEventListener('input', function(e) {
             var c = e.target;
@@ -2589,6 +2606,51 @@
             var f = bzFoneMask(c.value);
             if (c.value !== f) c.value = f;
         }, true);
+
+        // ---------- número da nova comanda: os números já abertos ficam bloqueados ----------
+        function bzNumLivre(n, dir) {
+            for (var k = n; k >= 1 && k <= 9999; k += dir) { if (!numeroEmUso(k)) return k; }
+            return null;
+        }
+        function bzNumEmUso() {
+            var vistos = {};
+            todasMesas().forEach(function(m) {
+                var num = m.pessoa ? parseInt(String(partesPessoa(m.nome).num || '').replace(/^T/, ''), 10) : parseInt(m.id, 10);
+                if (num && !vistos[num] && numeroEmUso(num)) vistos[num] = true;
+            });
+            return Object.keys(vistos).map(Number).sort(function(a, b) { return a - b; });
+        }
+        function bzNumAviso(txt) {
+            var box = document.getElementById('bz-num-aviso'); if (!box) return;
+            var usados = bzNumEmUso();
+            box.innerHTML = (txt ? '<div class="msg">' + esc(txt) + '</div>' : '') +
+                (usados.length ? 'Já abertas (bloqueadas): ' + usados.map(function(n) { return '<span class="bz-num-usado">' + n + '</span>'; }).join('') : 'Nenhuma comanda aberta.');
+        }
+        // digitou um número aberto: depois de uma pausa curta troca pelo próximo livre (ou o anterior, se não houver próximo)
+        function bzNumDigitado(inp) {
+            inp.value = inp.value.replace(/\D/g, '');
+            clearTimeout(BZ.numT);
+            BZ.numT = setTimeout(bzNumAjustar, 600);
+        }
+        function bzNumAjustar() {
+            var inp = document.getElementById('input-num-comanda'); if (!inp) return true;
+            var n = parseInt(inp.value, 10);
+            if (!n || !numeroEmUso(n)) { bzNumAviso(''); return true; }
+            var k = bzNumLivre(n, 1) || bzNumLivre(n, -1);
+            if (k) inp.value = String(k);
+            bzNumAviso('A ' + n + ' já está aberta: escolhida a ' + k + '.');
+            return false;
+        }
+        // botões − e +: anterior / próximo número livre
+        function bzNumPasso(dir) {
+            var inp = document.getElementById('input-num-comanda'); if (!inp) return;
+            clearTimeout(BZ.numT);
+            var n = parseInt(inp.value, 10) || 0, ini = n + dir;
+            if (ini < 1) ini = 1;
+            var k = bzNumLivre(ini, dir) || bzNumLivre(n || 1, dir > 0 ? -1 : 1);
+            if (k) inp.value = String(k);
+            bzNumAviso('');
+        }
 
         // ---------- som (o iPad só libera depois de um toque) ----------
         function bzLiberarSom() {
@@ -2719,7 +2781,7 @@
             var tp = tipoCampoTelefone(m);
             if (!tp) return '';
             return '<div class="bz-cliente">' + (tp === 'mesa' ? '<label>Nome do cliente (opcional)</label><input type="text" id="input-nome-mesa" maxlength="40" autocomplete="off" value="' + esc(estado.nomeMesaCache || '') + '" oninput="sugerirNomeMesa(this.value)"><div id="sug-mesa"></div>' : '') +
-                '<label>Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="15" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="(11) 98765-4321"' + (estado.telNI ? ' disabled' : '') + '>' +
+                '<label>Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="17" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="(011) 988.304.711"' + (estado.telNI ? ' disabled' : '') + '>' +
                 '<label class="chk"><input type="checkbox" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>';
         }
         function bzHtmlComanda(m) {
